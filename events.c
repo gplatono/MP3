@@ -11,43 +11,42 @@ int doeventinit()
 	return 0;
 }
 
-SYSCALL_DEFINE1(sys_doeventopen)
-{
-	printk("Test");
-	return 0;
-}
-
-SYSCALL_DEFINE1(sys_doeventclose, int, eventID)
+asmlinkage long sys_doeventopen(void)
 {
 	return 0;
 }
 
-SYSCALL_DEFINE1(sys_doeventwait, int, eventID)
+asmlinkage long sys_doeventclose(int eventID)
 {
 	return 0;
 }
 
-SYSCALL_DEFINE1(sys_doeventsig, int, eventID)
+asmlinkage long sys_doeventwait(int eventID)
 {
 	return 0;
 }
 
-SYSCALL_DEFINE1(sys_doeventinfo, int, num, int *, eventIDs)
+asmlinkage long sys_doeventsig(int eventID)
 {
 	return 0;
 }
 
-SYSCALL_DEFINE1(sys_doeventchown, int, eventID, uid_t, UID, gid_t, GID)
+asmlinkage long sys_doeventinfo(int num, int *eventIDs)
 {
 	return 0;
 }
 
-SYSCALL_DEFINE1(sys_doeventchmod, int, eventID, int, UIDFlag, int, GIDFlag)
+asmlinkage long sys_doeventchown(int eventID, uid_t UID, gid_t GID)
 {
 	return 0;
 }
 
-SYSCALL_DEFINE1(sys_doeventstat, int, eventID, uid_t *, UID, gid_t *, GID, int *, UIDFlag, int *, GIDFlag)
+asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
+{
+	return 0;
+}
+
+asmlinkage long sys_doeventstat(int eventID, uid_t *UID, gid_t *GID, int *UIDFlag, int *GIDFlag)
 {
 	return 0;
 }

@@ -1,8 +1,9 @@
 #ifndef _EVENTS_H
 #define _EVENTS_H
 
-#include "linux/types.h"
-#include "linux/wait.h"
+#include <linux/types.h>
+#include <linux/list.h>
+#include <linux/wait.h>
 
 struct event_struct 
 {
@@ -13,13 +14,13 @@ struct event_struct
 	int GIDFlag;
 	int sig_flag;
 	int counter;
-	list_head evtlist;
+	struct list_head evtlist;
 	wait_queue_head_t waitq;
 };
 
-int doeventinit();
+int doeventinit(void);
 
-#endif _EVENTS_H
+#endif
 
 
 
