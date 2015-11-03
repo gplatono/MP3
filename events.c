@@ -1,8 +1,17 @@
+/*
+* CSC456 Machine Problem 3
+*
+* Authors:
+* Jaime Montoya
+* Georgiy Platonov
+*/
+
 #include <linux/kernel.h>
 #include <linux/events.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
 #include <linux/syscalls.h>
+#include <linux/types.h>
 
 /* Maximum number of eventIDs available. If nextID == MAX_EVENTS, it's impossible to create events anymore */
 #define MAX_EVENTS 1000000
@@ -16,20 +25,21 @@
 #define ROLE_CLOSE 2
 #define ROLE_MODIFY 3
 
-
 static LIST_HEAD(events);
-int nextID;
+static int nextID;
 static DEFINE_SPINLOCK(event_lock);
+static int event_count;
 
 int doeventinit()
 {
-	nextID = 0;	
+	nextID = 0;
+	event_count = 0;	
 	return 0;
 }
 
-struct event_struct* get_event_by_id(int eventID)
+event_t* get_event_by_id(int eventID)
 {
-	struct event_struct *ret_val;
+	event_t *ret_val;
 	list_for_each_entry(ret_val, &events, evtlist)
 	{
 		if(ret_val->eventID == eventID)
@@ -38,10 +48,10 @@ struct event_struct* get_event_by_id(int eventID)
 	return NULL;
 }
 
-int check_privileges(struct event_struct* event, int roleflag)
+int check_privileges(event_t* event, int roleflag)
 {
-	uid_t EUID = sys_geteuid();//syscall(107);//geteuid();
-	gid_t EGID = sys_getegid();//syscall(108);//getegid();
+	uid_t EUID = sys_geteuid();
+	gid_t EGID = sys_getegid();
 	
 	/* Root can always do everything */ 
 	if(EUID == 0)
@@ -63,38 +73,51 @@ int check_privileges(struct event_struct* event, int roleflag)
 asmlinkage long sys_doeventopen(void)
 {	
 	spin_lock(&event_lock);
-	if(nextID == MAX_EVENTS)
-		return -1;	//Too many events
-	struct event_struct *tmp = (struct event_struct *)kmalloc(sizeof(struct event_struct), GFP_KERNEL);
-	if(tmp == NULL)
-		return -1;	//Not enough memory
+	if(nextID == MAX_EVENTS)	//Too many events
+	{
+		spin_unlock(&event_lock);
+		return -1;	
+	}
+	event_t *tmp = (event_t *)kmalloc(sizeof(event_t), GFP_KERNEL);
+	if(tmp == NULL)			//Not enough memory to create event
+	{
+		spin_unlock(&event_lock);
+		return -1;	
+	}
 	INIT_LIST_HEAD(&tmp->evtlist);
 	tmp->eventID = nextID;
 	nextID++;
+	tmp->UID = sys_geteuid();
+	tmp->GID = sys_getegid();
+	tmp->UIDFlag = 1;
+	tmp->GIDFlag = 1;
+	tmp->counter = 0;
+	tmp->sig_flag = 1;
+	init_waitqueue_head(&(tmp->waitq));
 	list_add(&(tmp->evtlist), &events);
+	event_count++;
 	spin_unlock(&event_lock);	
-	printk("%i\n", tmp->eventID);
+	printk("ID - %i\nUID - %i\nGID - %i\nUIDFlag - %i\nGIDFlag - %i\nCounter - %i\nsig_flag - %i\n", tmp->eventID, tmp->UID, tmp->GID, tmp->UIDFlag, tmp->GIDFlag, tmp->counter, tmp->sig_flag);
 	return tmp->eventID;
 }
 
 asmlinkage long sys_doeventclose(int eventID)
 {
-	int ret_val = -1;
+	int proc_num = -1;
 	spin_lock(&event_lock);
-	struct event_struct *tmp = get_event_by_id(eventID);
-	if(tmp == NULL || check_privileges(tmp, ROLE_CLOSE == 0))
+	event_t *tmp = get_event_by_id(eventID);
+	if(tmp == NULL || check_privileges(tmp, ROLE_CLOSE) == 0 || check_privileges(tmp, ROLE_WAITSIG) == 0)
 	{
 		spin_unlock(&event_lock);
 		return -1;
 	}
-	spin_unlock(&event_lock);
-	if((ret_val = sys_doeventsig(eventID)) == -1)
-		return -1;	
-	spin_lock(&event_lock);
+	wake_up_interruptible(&(tmp->waitq));
+	proc_num = tmp->counter;	
 	list_del(&(tmp->evtlist));
+	event_count--;	
 	kfree(tmp);
 	spin_unlock(&event_lock);
-	return ret_val;
+	return proc_num;
 }
 
 asmlinkage long sys_doeventwait(int eventID)
@@ -105,8 +128,9 @@ asmlinkage long sys_doeventwait(int eventID)
 asmlinkage long sys_doeventsig(int eventID)
 {
 	int proc_num = -1;
+
 	spin_lock(&event_lock);
-	struct event_struct* tmp = get_event_by_id(eventID);
+	event_t *tmp = get_event_by_id(eventID);
 	
 	if(tmp == NULL || check_privileges(tmp, ROLE_WAITSIG) == 0)
 	{
@@ -122,21 +146,81 @@ asmlinkage long sys_doeventsig(int eventID)
 }
 
 asmlinkage long sys_doeventinfo(int num, int *eventIDs)
-{
-	return 0;
+{	
+	if(eventIDs == NULL)
+		return event_count;
+	if(num < event_count)
+		return -1;
+	spin_lock(&event_lock);		
+	int *IDs = (int*)kmalloc(event_count*sizeof(int), GFP_KERNEL);
+	if(IDs == NULL)
+	{
+		spin_unlock(&event_lock);
+		return -1;
+	}
+	event_t *tmp;
+	int index = 0;
+	list_for_each_entry(tmp, &events, evtlist)
+	{
+		IDs[index] = tmp->eventID;
+		index++;
+	}
+	if(copy_to_user(eventIDs, IDs, event_count*sizeof(int)) != 0)
+	{
+		spin_unlock(&event_lock);
+		return -1;
+	}
+	spin_unlock(&event_lock);
+	return index;	//We return index because event_count may change between this and the previous instruction
 }
 
 asmlinkage long sys_doeventchown(int eventID, uid_t UID, gid_t GID)
 {
+	spin_lock(&event_lock);
+	event_t *tmp = get_event_by_id(eventID);
+	if(tmp == NULL || check_privileges(tmp, ROLE_MODIFY) == 0)
+	{
+		spin_unlock(&event_lock);
+		return -1;		
+	}
+	tmp->UID = UID;
+	tmp->GID = GID;
+	spin_unlock(&event_lock);
 	return 0;
 }
 
 asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
 {
+	spin_lock(&event_lock);
+	event_t *tmp = get_event_by_id(eventID);
+	if(tmp == NULL || check_privileges(tmp, ROLE_MODIFY) == 0)
+	{
+		spin_unlock(&event_lock);
+		return -1;		
+	}
+	tmp->UIDFlag = UIDFlag;
+	tmp->GIDFlag = GIDFlag;
+	spin_unlock(&event_lock);
 	return 0;
 }
 
 asmlinkage long sys_doeventstat(int eventID, uid_t *UID, gid_t *GID, int *UIDFlag, int *GIDFlag)
 {
+	if(UID == NULL || GID == NULL || UIDFlag == NULL || GIDFlag == NULL)
+		return -1;
+	spin_lock(&event_lock);
+	event_t *tmp = get_event_by_id(eventID);
+	if(tmp == NULL)
+	{
+		spin_unlock(&event_lock);
+		return -1;	
+	}
+	if(copy_to_user(UID, &(tmp->UID), sizeof(uid_t)) == 0 || copy_to_user(GID, &(tmp->GID), sizeof(gid_t)) == 0
+	   || copy_to_user(UIDFlag, &(tmp->UIDFlag), sizeof(int)) || copy_to_user(GIDFlag, &(tmp->GIDFlag), sizeof(int)))
+	{	
+		spin_unlock(&event_lock);		
+		return -1;
+	}
+	spin_unlock(&event_lock);
 	return 0;
 }

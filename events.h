@@ -18,6 +18,8 @@ struct event_struct
 	wait_queue_head_t waitq;
 };
 
+typedef struct event_struct event_t;
+
 int doeventinit(void);
 
 #endif
