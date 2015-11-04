@@ -12,6 +12,7 @@
 #include <linux/slab.h>
 #include <linux/syscalls.h>
 #include <linux/types.h>
+#include <linux/wait.h>
 
 /* Maximum number of eventIDs available. If nextID == MAX_EVENTS, it's impossible to create events anymore */
 #define MAX_EVENTS 1000000
@@ -30,10 +31,11 @@ static int nextID;
 static DEFINE_SPINLOCK(event_lock);
 static int event_count;
 
-int doeventinit()
+int doevent_init()
 {
 	nextID = 0;
-	event_count = 0;	
+	event_count = 0;
+	printk("Event init ok...\n");
 	return 0;
 }
 
@@ -122,7 +124,18 @@ asmlinkage long sys_doeventclose(int eventID)
 
 asmlinkage long sys_doeventwait(int eventID)
 {
-	return 0;
+	spin_lock(&event_lock);
+	event_t *tmp = get_event_by_id(eventID);
+	if(tmp == NULL)
+	{
+		spin_unlock(&event_lock);
+		return -1;
+	}
+	tmp->counter++;
+	tmp->sig_flag = 0;
+	spin_unlock(&event_lock);
+	wait_event_interruptible(tmp->waitq, tmp->sig_flag == 1);	
+	return 1;
 }
 
 asmlinkage long sys_doeventsig(int eventID)
