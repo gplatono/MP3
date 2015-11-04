@@ -31,9 +31,9 @@ static int nextID;
 static DEFINE_SPINLOCK(event_lock);
 static int event_count;
 
-int doevent_init()
+void __init doevent_init(void)
 {
-	nextID = 0;
+	nextID = 10;
 	event_count = 0;
 	printk("Event init ok...\n");
 	return 0;
@@ -217,7 +217,7 @@ asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
 	return 0;
 }
 
-asmlinkage long sys_doeventstat(int eventID, uid_t *UID, gid_t *GID, int *UIDFlag, int *GIDFlag)
+asmlinkage long sys_doeventstat(int eventID, uid_t __user *UID, gid_t __user *GID, int __user *UIDFlag, int __user *GIDFlag)
 {
 	if(UID == NULL || GID == NULL || UIDFlag == NULL || GIDFlag == NULL)
 		return -1;
@@ -228,8 +228,10 @@ asmlinkage long sys_doeventstat(int eventID, uid_t *UID, gid_t *GID, int *UIDFla
 		spin_unlock(&event_lock);
 		return -1;	
 	}
-	if(copy_to_user(UID, &(tmp->UID), sizeof(uid_t)) == 0 || copy_to_user(GID, &(tmp->GID), sizeof(gid_t)) == 0
-	   || copy_to_user(UIDFlag, &(tmp->UIDFlag), sizeof(int)) || copy_to_user(GIDFlag, &(tmp->GIDFlag), sizeof(int)))
+	if(copy_to_user(UID, &(tmp->UID), sizeof(uid_t)) != 0 
+	|| copy_to_user(GID, &(tmp->GID), sizeof(gid_t)) != 0
+	|| copy_to_user(UIDFlag, &(tmp->UIDFlag), sizeof(int)) != 0 
+	|| copy_to_user(GIDFlag, &(tmp->GIDFlag), sizeof(int)) != 0)
 	{	
 		spin_unlock(&event_lock);		
 		return -1;

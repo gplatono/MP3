@@ -90,7 +90,7 @@
 #include <asm/smp.h>
 #endif
 
-extern int doevent_init(void);
+extern void doevent_init(void);
 
 static int kernel_init(void *);
 
@@ -680,8 +680,8 @@ asmlinkage __visible void __init start_kernel(void)
 	ftrace_init();
 
 	/* Do the rest non-__init'ed, we're now alive */
-	rest_init();
 	doevent_init();
+	rest_init();
 }
 
 /* Call all constructor functions linked into the kernel. */
