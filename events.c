@@ -31,6 +31,23 @@ static int nextID;
 static DEFINE_SPINLOCK(event_lock);
 static int event_count;
 
+/*
+ * Function: doevent_init()
+ *
+ * Description:
+ *  This function is called when the system is booted. It was added to 
+ *  this file: linux-3.18.20/init/main.c, inside 
+ *  asmlinkage __visible void __init start_kernel(void){}.
+ *
+ * Inputs:
+ *  No inputs.
+ *
+ * Outputs: 
+ *  statep - A printk() message to confirm that the function was accessed.
+ *
+ * Return value:
+ *  0 - Calling the function succeeded.
+ */
 int doevent_init()
 {
 	nextID = 0;
@@ -39,6 +56,25 @@ int doevent_init()
 	return 0;
 }
 
+/*
+ * Function: get_event_by_id()
+ *
+ * Description:
+ *  This function finds an event in the event list using the eventID received
+ *  as a parameter.
+ *
+ * Inputs:
+ *  eventID - An integer that corresponds to the event that the function will
+ *  try to find. 
+ *
+ * Outputs: 
+ *  No outputs.
+ *
+ * Return value:
+ *  ret_val - A pointer to the element in the event list with the eventID 
+ *  received as a parameter.
+ *  NULL - The event was not found in the event list.
+ */
 event_t* get_event_by_id(int eventID)
 {
 	event_t *ret_val;
@@ -50,6 +86,27 @@ event_t* get_event_by_id(int eventID)
 	return NULL;
 }
 
+/*
+ * Function: check_privileges()
+ *
+ * Description:
+ *  This function is used to check the privileges based on Event Access Control
+ *  rules created for the system calls on events.
+ *
+ * Inputs:
+ *  event - A pointer to a memory location in which to store the event that
+ *  will be evaluated for the corresponding privileges.
+ *  roleflag - An integer that will determine the roles defining operations 
+ *  associated with an event. The possible values are defined above in this 
+ *  file.
+ *
+ * Outputs: 
+ *  No outputs.
+ *
+ * Return value:
+ *  0 - Insufficient privileges, do not allow access.
+ *  1 - Sufficient privileges, allow access.
+ */
 int check_privileges(event_t* event, int roleflag)
 {
 	uid_t EUID = sys_geteuid();
@@ -72,6 +129,23 @@ int check_privileges(event_t* event, int roleflag)
 	return 0;
 }
 
+/*
+ * Function: sys_doeventopen()
+ *
+ * Description:
+ *  This function creates a new event.
+ *
+ * Inputs:
+ *  void - The function takes zero arguments.
+ *
+ * Outputs: 
+ *  A printk() message with the values that correspond to members of the 
+ *  struct event_struct created in linux-3.18.20/include/linux/events.h.
+ *
+ * Return value:
+ *  eventID - The event ID of the event that was created successfully.
+ *  -1 - Creation of the event failed.
+ */
 asmlinkage long sys_doeventopen(void)
 {	
 	spin_lock(&event_lock);
@@ -103,6 +177,23 @@ asmlinkage long sys_doeventopen(void)
 	return tmp->eventID;
 }
 
+/*
+ * Function: sys_doeventclose()
+ *
+ * Description:
+ *  This function destroys with the given event ID and signals any processes 
+ *  waiting on the event to leave the event.
+ *
+ * Inputs:
+ *  eventID - An integer that corresponds to the event that the function will
+ *  try to find.
+ *
+ * Outputs: 
+ *  No outputs.
+ *
+ * Return value:
+ *  proc_num - Number of processes signaled.
+ */
 asmlinkage long sys_doeventclose(int eventID)
 {
 	int proc_num = -1;
@@ -122,6 +213,23 @@ asmlinkage long sys_doeventclose(int eventID)
 	return proc_num;
 }
 
+/*
+ * Function: sys_doeventwait()
+ *
+ * Description:
+ *  This function blocks process until the event is signaled.
+ *
+ * Inputs:
+ *  eventID - An integer that corresponds to the event that the function will
+ *  try to find.
+ *
+ * Outputs: 
+ *  No outputs.
+ *
+ * Return value:
+ *  1 - Blocking process succeeded.
+ *  -1 - Blocking process failed.
+ */
 asmlinkage long sys_doeventwait(int eventID)
 {
 	spin_lock(&event_lock);
@@ -138,6 +246,24 @@ asmlinkage long sys_doeventwait(int eventID)
 	return 1;
 }
 
+/*
+ * Function: sys_doeventsig()
+ *
+ * Description:
+ *  This function unblocks all waiting processes, or it is ignored if no
+ *  processes are blocked.
+ *
+ * Inputs:
+ *  eventID - An integer that corresponds to the event that the function will
+ *  try to find.
+ *
+ * Outputs: 
+ *  No outputs. 
+ *
+ * Return value:
+ *  proc_num - Number of processes signaled on success.
+ *  -1 - Unblocking the waiting processes failed.
+ */
 asmlinkage long sys_doeventsig(int eventID)
 {
 	int proc_num = -1;
@@ -158,6 +284,25 @@ asmlinkage long sys_doeventsig(int eventID)
 	return proc_num;
 }
 
+/*
+ * Function: sys_doeventinfo()
+ *
+ * Description:
+ *  This function fills in the array of integers pointed to by eventIDs with
+ *  the current set of active event IDs.
+ *
+ * Inputs:
+ *  num - The number of integers which the memory pointed to by eventIDs can hold.
+ *  eventIDs - A pointer to a memory location in which to store the current set of 
+ *  active eventIDs.
+ *
+ * Outputs: 
+ *  No outputs.
+ *
+ * Return value:
+ *  index - Value corresponding to the number of active events.
+ *  -1 - The function failed to return the number of active events.
+ */
 asmlinkage long sys_doeventinfo(int num, int *eventIDs)
 {	
 	if(eventIDs == NULL)
@@ -187,6 +332,27 @@ asmlinkage long sys_doeventinfo(int num, int *eventIDs)
 	return index;	//We return index because event_count may change between this and the previous instruction
 }
 
+/*
+ * Function: sys_doeventchown()
+ *
+ * Description:
+ *  This function changes the UID and GID of the event to the specified values.
+ *
+ * Inputs:
+ *  eventID - An integer that corresponds to the event that the function will
+ *  try to find.
+ *  UID - UID of the event, which is a member of struct event_struct, created in
+ *  linux-3.18.20/include/linux/events.h.
+ *  GID - GID of the event, which is a member of struct event_struct, created in
+ *  linux-3.18.20/include/linux/events.h.
+ *
+ * Outputs: 
+ *  No outputs.
+ *
+ * Return value:
+ *  0 - Succeeded changing the UID and GID of the event.
+ *  -1 - Failed changing the UID and GID of the event.
+ */
 asmlinkage long sys_doeventchown(int eventID, uid_t UID, gid_t GID)
 {
 	spin_lock(&event_lock);
