@@ -80,3 +80,9 @@ Enter syscall number and  param:<br />
 
 The return value is 3 because the event with eventID 11 had 3 processes blocked. Signaling eventID 11 unblocked all of the waiting processes.
 
+<h2>Filling in the array of integers pointed to by eventIDs</h2>
+
+result of doeventinfo: 3<br />
+12 11 10 -1 -1 -1 -1 -1 -1 -1<br />
+
+The return value is 3 because three events were created. "12 11 10" correspond to the eventIDs 10, 11, and 12 assigned to the events that were created.
