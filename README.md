@@ -99,4 +99,11 @@ Enter syscall number and  param:
 182 12
 0
 
-The return value is 0 because the event with eventID 12 existed, and it was destroyed.
+The return value is 0 because the event with eventID 12 existed, and it was destroyed. This can be confirmed by calling the doeventinfo system call again:
+
+Enter syscall number and  param:
+185 0
+result of doeventinfo: 2
+11 10 10 -1 -1 -1 -1 -1 -1 -1
+
+This time, the result is 2, not 3 as it was before, because the event with eventID 12 was destroyed, and it is not listed in the array of integers pointed to by eventIDs anymore.
