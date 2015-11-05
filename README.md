@@ -44,3 +44,6 @@ Enter syscall number and  param:<br />
 [  404.345504] Counter - 0<br />
 [  404.345504] sig_flag - 1<br />
 
+Three events were created with the following eventIDs: 10, 11, 12.
+
+Create three processes that will block on the event with eventID 11 (previously created).
