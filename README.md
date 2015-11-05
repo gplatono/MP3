@@ -50,14 +50,15 @@ Three events were created with the following eventIDs: 10, 11, 12. Notice that t
 
 Create three processes that will block on the event with eventID 11 (previously created).
 
-Enter syscall number and  param:
-183 11
-Child created...
-Enter syscall number and  param:
-183 11
-Child created...
-Enter syscall number and  param:
-183 11
-Child created...
+Enter syscall number and  param:<br />
+183 11<br />
+Child created...<br />
+Enter syscall number and  param:<br />
+183 11<br />
+Child created...<br />
+Enter syscall number and  param:<br />
+183 11<br />
+Child created...<br />
+
 
 
