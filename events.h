@@ -20,7 +20,7 @@ struct event_struct
 
 typedef struct event_struct event_t;
 
-int doevent_init(void);
+void __init doevent_init(void);
 
 #endif
 
