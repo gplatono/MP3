@@ -86,3 +86,17 @@ result of doeventinfo: 3<br />
 12 11 10 -1 -1 -1 -1 -1 -1 -1<br />
 
 The return value is 3 because three events were created. "12 11 10" correspond to the eventIDs 10, 11, and 12 assigned to the events that were created.
+
+<h2>Destroying an event</h2>
+
+Enter syscall number and  param:<br />
+182 20<br />
+-1<br />
+
+The return value is -1 because an event with eventID 20 does not exist.
+
+Enter syscall number and  param:
+182 12
+0
+
+The return value is 0 because the event with eventID 12 existed, and it was destroyed.
