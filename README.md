@@ -14,4 +14,5 @@ linux256/linux-3.18.20/include/linux/syscalls.h
 <h1>Test program</h1>
 
 <h2>Creating an event</h2>
+Create three new events. The return value is the event ID of the event that was created successfully. 
 
