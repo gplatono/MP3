@@ -60,5 +60,23 @@ Enter syscall number and  param:<br />
 183 11<br />
 Child created...<br />
 
+<h2>Unblocking all waiting processes</h2>
 
+Enter syscall number and  param:<br />
+184 123<br />
+-1<br />
+
+The return value is -1 because an event with eventID 123 does not exist.
+
+Enter syscall number and  param:<br />
+184 10<br />
+0<br />
+
+The return value is 0 because the event with eventID 10 does not have any processes blocked.
+
+Enter syscall number and  param:<br />
+184 11<br />
+3<br />
+
+The 
 
