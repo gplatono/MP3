@@ -78,5 +78,5 @@ Enter syscall number and  param:<br />
 184 11<br />
 3<br />
 
-The 
+The return value is 3 because the event with eventID 11 had 3 processes blocked. Signaling eventID 11 unblocked all of the waiting processes.
 
