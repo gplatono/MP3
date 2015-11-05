@@ -14,7 +14,9 @@
 #include <linux/types.h>
 #include <linux/wait.h>
 
-/* Maximum number of eventIDs available. If nextID == MAX_EVENTS, it's impossible to create events anymore */
+/* Maximum number of eventIDs available.
+*  If nextID == MAX_EVENTS, it's impossible to create events anymore 
+*/
 #define MAX_EVENTS 1000000
 
 /* Roles defining operations associated with an event. 
@@ -41,21 +43,19 @@ static int event_count;
  *
  * Inputs:
  *  No inputs.
- *
+ * 
  * Outputs: 
- *  statep - A printk() message to confirm that the function was accessed.
+ *  No outputs.
  *
  * Return value:
- *  0 - Calling the function succeeded.
+ *  No return.
  */
 
 void __init doevent_init(void)
-
 {
-	nextID = 10;
+	nextID = 0;
 	event_count = 0;
 	printk("Event init ok...\n");
-	return 0;
 }
 
 /*
@@ -68,14 +68,13 @@ void __init doevent_init(void)
  * Inputs:
  *  eventID - An integer that corresponds to the event that the function will
  *  try to find. 
- *
+ * 
  * Outputs: 
  *  No outputs.
  *
  * Return value:
- *  ret_val - A pointer to the element in the event list with the eventID 
- *  received as a parameter.
- *  NULL - The event was not found in the event list.
+ *  A pointer to the element in the event list with the eventID 
+ *  received as a parameter. Returns NULL if the event was not found in the event list.
  */
 event_t* get_event_by_id(int eventID)
 {
@@ -111,6 +110,7 @@ event_t* get_event_by_id(int eventID)
  */
 int check_privileges(event_t* event, int roleflag)
 {
+	/* Getting effective UID and GID of the current process */
 	uid_t EUID = sys_geteuid();
 	gid_t EGID = sys_getegid();
 	
@@ -139,10 +139,9 @@ int check_privileges(event_t* event, int roleflag)
  *
  * Inputs:
  *  void - The function takes zero arguments.
- *
+ * 
  * Outputs: 
- *  A printk() message with the values that correspond to members of the 
- *  struct event_struct created in linux-3.18.20/include/linux/events.h.
+ *  No outputs.
  *
  * Return value:
  *  eventID - The event ID of the event that was created successfully.
@@ -151,20 +150,26 @@ int check_privileges(event_t* event, int roleflag)
 asmlinkage long sys_doeventopen(void)
 {	
 	spin_lock(&event_lock);
-	if(nextID == MAX_EVENTS)	//Too many events
+
+	/* Too many events */
+	if(nextID == MAX_EVENTS)	
 	{
 		spin_unlock(&event_lock);
 		return -1;	
 	}
+
 	event_t *tmp = (event_t *)kmalloc(sizeof(event_t), GFP_KERNEL);
-	if(tmp == NULL)			//Not enough memory to create event
+
+	/* Not enough memory to create event */
+	if(tmp == NULL)			
 	{
 		spin_unlock(&event_lock);
 		return -1;	
 	}
+
+	/* Init new event */
 	INIT_LIST_HEAD(&tmp->evtlist);
 	tmp->eventID = nextID;
-	nextID++;
 	tmp->UID = sys_geteuid();
 	tmp->GID = sys_getegid();
 	tmp->UIDFlag = 1;
@@ -172,10 +177,11 @@ asmlinkage long sys_doeventopen(void)
 	tmp->counter = 0;
 	tmp->sig_flag = 1;
 	init_waitqueue_head(&(tmp->waitq));
+
 	list_add(&(tmp->evtlist), &events);
+	nextID++;
 	event_count++;
 	spin_unlock(&event_lock);	
-	printk("ID - %i\nUID - %i\nGID - %i\nUIDFlag - %i\nGIDFlag - %i\nCounter - %i\nsig_flag - %i\n", tmp->eventID, tmp->UID, tmp->GID, tmp->UIDFlag, tmp->GIDFlag, tmp->counter, tmp->sig_flag);
 	return tmp->eventID;
 }
 
@@ -183,13 +189,13 @@ asmlinkage long sys_doeventopen(void)
  * Function: sys_doeventclose()
  *
  * Description:
- *  This function destroys with the given event ID and signals any processes 
- *  waiting on the event to leave the event.
+ *  This function destroys an event with the given event ID and signals any 
+ *  processes waiting on the event to leave the event.
  *
  * Inputs:
  *  eventID - An integer that corresponds to the event that the function will
- *  try to find.
- *
+ *  be applied to.
+ * 
  * Outputs: 
  *  No outputs.
  *
@@ -198,16 +204,27 @@ asmlinkage long sys_doeventopen(void)
  */
 asmlinkage long sys_doeventclose(int eventID)
 {
-	int proc_num = -1;
+	int proc_num = -1; 	//Number of processes waiting on an event
+
 	spin_lock(&event_lock);
+
 	event_t *tmp = get_event_by_id(eventID);
+	
+	/* If there is no event with provided eventID or we don't have enough privileges then fail */
 	if(tmp == NULL || check_privileges(tmp, ROLE_CLOSE) == 0 || check_privileges(tmp, ROLE_WAITSIG) == 0)
 	{
 		spin_unlock(&event_lock);
 		return -1;
 	}
+	
+	/* Signal and wake up all the waiting processes before destroying the event */
+	tmp->sig_flag = 1;
 	wake_up_interruptible(&(tmp->waitq));
-	proc_num = tmp->counter;	
+
+	/* Save the amount of waiting processes,
+	* delete the event from the list and free memory
+	*/
+	proc_num = tmp->counter;
 	list_del(&(tmp->evtlist));
 	event_count--;	
 	kfree(tmp);
@@ -223,24 +240,29 @@ asmlinkage long sys_doeventclose(int eventID)
  *
  * Inputs:
  *  eventID - An integer that corresponds to the event that the function will
- *  try to find.
+ *  be applied to.
  *
  * Outputs: 
  *  No outputs.
  *
  * Return value:
- *  1 - Blocking process succeeded.
- *  -1 - Blocking process failed.
+ *  1 - Process blocking succeeded.
+ *  -1 - Process blocking failed.
  */
 asmlinkage long sys_doeventwait(int eventID)
 {
 	spin_lock(&event_lock);
+
 	event_t *tmp = get_event_by_id(eventID);
+
+	/* If there is no event with provided eventID then fail */
 	if(tmp == NULL)
 	{
 		spin_unlock(&event_lock);
 		return -1;
 	}
+
+	/* Increment the counter of waiting processes and set signal flag to 0 (No signals) */
 	tmp->counter++;
 	tmp->sig_flag = 0;
 	spin_unlock(&event_lock);
@@ -257,7 +279,7 @@ asmlinkage long sys_doeventwait(int eventID)
  *
  * Inputs:
  *  eventID - An integer that corresponds to the event that the function will
- *  try to find.
+ *  be applied to.
  *
  * Outputs: 
  *  No outputs. 
@@ -271,14 +293,23 @@ asmlinkage long sys_doeventsig(int eventID)
 	int proc_num = -1;
 
 	spin_lock(&event_lock);
+
 	event_t *tmp = get_event_by_id(eventID);
-	
+
+	/* If there is no event with provided eventID 
+	*  or we don't have enough privileges then fail 
+	*/
 	if(tmp == NULL || check_privileges(tmp, ROLE_WAITSIG) == 0)
 	{
 		spin_unlock(&event_lock);
 		return -1;
 	}
 	
+	/* Set signal flag to 1 (send a signal),
+	*  wake up all the waiting processes,
+	*  reset the waiting counter
+	*/
+	tmp->sig_flag = 1;
 	wake_up_interruptible(&(tmp->waitq));
 	proc_num = tmp->counter;
 	tmp->counter = 0; 	
@@ -299,7 +330,7 @@ asmlinkage long sys_doeventsig(int eventID)
  *  active eventIDs.
  *
  * Outputs: 
- *  No outputs.
+ *  eventIDs - the array in user space to store existing event IDs.
  *
  * Return value:
  *  index - Value corresponding to the number of active events.
@@ -307,17 +338,24 @@ asmlinkage long sys_doeventsig(int eventID)
  */
 asmlinkage long sys_doeventinfo(int num, int *eventIDs)
 {	
+	/* Safety checks */
 	if(eventIDs == NULL)
 		return event_count;
 	if(num < event_count)
 		return -1;
+
 	spin_lock(&event_lock);		
+
+	/* Try to create a temporary buffer to store event IDs */
 	int *IDs = (int*)kmalloc(event_count*sizeof(int), GFP_KERNEL);
+
 	if(IDs == NULL)
 	{
 		spin_unlock(&event_lock);
 		return -1;
 	}
+
+	/* Scan through the list of events and fill IDs array */
 	event_t *tmp;
 	int index = 0;
 	list_for_each_entry(tmp, &events, evtlist)
@@ -325,13 +363,19 @@ asmlinkage long sys_doeventinfo(int num, int *eventIDs)
 		IDs[index] = tmp->eventID;
 		index++;
 	}
+	
+	/* Copy IDs to eventIDs and check if the copying succeded */
 	if(copy_to_user(eventIDs, IDs, event_count*sizeof(int)) != 0)
 	{
 		spin_unlock(&event_lock);
 		return -1;
 	}
 	spin_unlock(&event_lock);
-	return index;	//We return index because event_count may change between this and the previous instruction
+
+	/* We return index because event_count may
+	*  change between this and the previous instruction
+	*/
+	return index;	
 }
 
 /*
@@ -342,11 +386,9 @@ asmlinkage long sys_doeventinfo(int num, int *eventIDs)
  *
  * Inputs:
  *  eventID - An integer that corresponds to the event that the function will
- *  try to find.
- *  UID - UID of the event, which is a member of struct event_struct, created in
- *  linux-3.18.20/include/linux/events.h.
- *  GID - GID of the event, which is a member of struct event_struct, created in
- *  linux-3.18.20/include/linux/events.h.
+ *  be applied to.
+ *  UID - new effective UID value for this event.
+ *  GID - new effective GID value for this event.
  *
  * Outputs: 
  *  No outputs.
@@ -358,44 +400,106 @@ asmlinkage long sys_doeventinfo(int num, int *eventIDs)
 asmlinkage long sys_doeventchown(int eventID, uid_t UID, gid_t GID)
 {
 	spin_lock(&event_lock);
+
 	event_t *tmp = get_event_by_id(eventID);
+	
+	/* If there is no event with provided eventID 
+	*  or we don't have enough privileges then fail 
+	*/
 	if(tmp == NULL || check_privileges(tmp, ROLE_MODIFY) == 0)
 	{
 		spin_unlock(&event_lock);
 		return -1;		
 	}
+
 	tmp->UID = UID;
 	tmp->GID = GID;
 	spin_unlock(&event_lock);
 	return 0;
 }
 
+/*
+ * Function: sys_doeventchmod()
+ *
+ * Description:
+ *  This function changes the User Signal Enable Bit (UIDFlag) and the Group Signal 
+ *  Enable Bit (GIDFlag) to provided values.
+ *
+ * Inputs:
+ *  eventID - An integer that corresponds to the event that the function will
+ *  be applied to.
+ *  UIDFlag - New value for the event's UIDFlag
+ *  GIDFlag - New value for the event's GIDFlag
+ *
+ * Outputs: 
+ *  No outputs.
+ *
+ * Return value:
+ *  0 - Succeeded changing the User Signal Enable Bit and Group Signal Enable Bit.
+ *  -1 - Failed changing the User Signal Enable Bit or Group Signal Enable Bit.
+ */
 asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
 {
 	spin_lock(&event_lock);
+
 	event_t *tmp = get_event_by_id(eventID);
+
+	/* If there is no event with provided eventID 
+	*  or we don't have enough privileges then fail 
+	*/
 	if(tmp == NULL || check_privileges(tmp, ROLE_MODIFY) == 0)
 	{
 		spin_unlock(&event_lock);
 		return -1;		
 	}
+
 	tmp->UIDFlag = UIDFlag;
 	tmp->GIDFlag = GIDFlag;
 	spin_unlock(&event_lock);
 	return 0;
 }
-
+/*
+ * Function: sys_doeventstat()
+ *
+ * Description:
+ *  This function places the UID, GID, User Signal Enable Bit, and Group Signal Enable
+ *  Bit into the memory pointed to by UID, GID, UIDFlag, and GIDFlag, respectively.
+ *
+ * Inputs:
+ *  eventID - An integer that corresponds to the event that the function will
+ *  be applied to.
+ *  UID - A pointer to a memory location in which to store the UID.
+ *  GID - A pointer to a memory location in which to store the GID.
+ *  UIDFlag - A pointer to a memory location in which to store the UIDFlag.
+ *  GIDFlag - A pointer to a memory location in which to store the GIDFlag.
+ *
+ * Outputs: 
+ *  No outputs.
+ *
+ * Return value:
+ *  0 - Succeeded placing values into memory corresponding to UID, GID, UIDFlag, and 
+ *  GIDFlag.
+ *  -1 - Failed placing values into memory corresponding to UID, GID, UIDFlag, and 
+ *  GIDFlag.
+ */
 asmlinkage long sys_doeventstat(int eventID, uid_t __user *UID, gid_t __user *GID, int __user *UIDFlag, int __user *GIDFlag)
 {
+	/* Pointer safety check */
 	if(UID == NULL || GID == NULL || UIDFlag == NULL || GIDFlag == NULL)
 		return -1;
+
 	spin_lock(&event_lock);
+
 	event_t *tmp = get_event_by_id(eventID);
+
+	/* If no event with specified event ID then fail */
 	if(tmp == NULL)
 	{
 		spin_unlock(&event_lock);
 		return -1;	
 	}
+
+	/* Copy the event's UID, GID, UIDFlag, GIDFlag and check whether the operation succeded */
 	if(copy_to_user(UID, &(tmp->UID), sizeof(uid_t)) != 0 
 	|| copy_to_user(GID, &(tmp->GID), sizeof(gid_t)) != 0
 	|| copy_to_user(UIDFlag, &(tmp->UIDFlag), sizeof(int)) != 0 
@@ -404,6 +508,7 @@ asmlinkage long sys_doeventstat(int eventID, uid_t __user *UID, gid_t __user *GI
 		spin_unlock(&event_lock);		
 		return -1;
 	}
+
 	spin_unlock(&event_lock);
 	return 0;
 }
