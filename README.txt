@@ -1,109 +1,37 @@
-# MP3
-<h1>CSC456 Machine Problem 3</h1>
+Files modified:
 
-<h1>Files modified</h1>
+1) linux256/linux-3.18.20/kernel/events.c
+Code corresponding to the functions added to implement all of the system calls.
 
-linux256/linux-3.18.20/kernel/events.c<br />
-linux256/linux-3.18.20/include/linux/events.h<br />
-linux256/linux-3.18.20/init/main.c<br />
-linux256/floppy/eventtest.c<br />
-linux256/runqemu.sh<br />
-linux256/linux-3.18.20/arch/x86/syscalls/syscall_64.tbl<br />
-linux256/linux-3.18.20/include/linux/syscalls.h
+2) linux256/linux-3.18.20/include/linux/events.h
+Declaration of the structure for the events.
 
-<h1>Test program</h1>
+3) linux256/linux-3.18.20/init/main.c
+doevent_init() was inserted into "asmlinkage void __init start_kernel(void)" to initialize variables at boot time:
 
-<h2>Creating events</h2>
-Create three new events. The return value is the event ID of the event that was created successfully.
+/* Do the rest non-__init'ed, we're now alive */
+doevent_init();   
+rest_init();
 
-Enter syscall number and  param:<br />
-181 0<br />
-[  383.720087] ID - 10<br />
-[  383.720087] UID - 0<br />
-[  383.720087] GID - 0<br />
-[  383.720087] UIDFlag - 1<br />
-[  383.720087] GIDFlag - 1<br />
-[  383.720087] Counter - 0<br />
-[  383.720087] sig_flag - 1<br />
-Enter syscall number and  param:<br />
-181 0<br />
-[  392.594469] ID - 11<br />
-[  392.594469] UID - 0<br />
-[  392.594469] GID - 0<br />
-[  392.594469] UIDFlag - 1<br />
-[  392.594469] GIDFlag - 1<br />
-[  392.594469] Counter - 0<br />
-[  392.594469] sig_flag - 1<br />
-Enter syscall number and  param:<br />
-181 0<br />
-[  404.345504] ID - 12<br />
-[  404.345504] UID - 0<br />
-[  404.345504] GID - 0<br />
-[  404.345504] UIDFlag - 1<br />
-[  404.345504] GIDFlag - 1<br />
-[  404.345504] Counter - 0<br />
-[  404.345504] sig_flag - 1<br />
+doevent_init() is declared in the file doevent_init(). The steps to complete this process were completed by following the instructions in the "Boot Time" section at http://web.cs.wpi.edu/~claypool/courses/3013-A02/projects/proj2/index.html#boot
 
-Three events were created with the following eventIDs: 10, 11, 12. Notice that the eventID of the first event was 10, not 0. This is because the function void __init doevent_init(void) was called in the file linux256/linux-3.18.20/init/main.c, and the function created this initialization: "nextID = 10;".
+4) linux256/floppy/test.c
+User-level program to test the kernel functions, including all of the systems calls that were created in the file linux256/linux-3.18.20/kernel/events.c.
 
-<h2>Blocking a process until the event is signaled</h2>
+5) linux256/runqemu.sh
+Include the configuration to ensure that the source code for the test file can be compiled from the "floppy" directory and then make executable file available to run using QEMU.
 
-Create three processes that will block on the event with eventID 11 (previously created).
+6) linux256/linux-3.18.20/arch/x86/syscalls/syscall_64.tbl
+Declaration of the system call numbers and entry vectors to include the new system calls that were created.
 
-Enter syscall number and  param:<br />
-183 11<br />
-Child created...<br />
-Enter syscall number and  param:<br />
-183 11<br />
-Child created...<br />
-Enter syscall number and  param:<br />
-183 11<br />
-Child created...<br />
+7) linux256/linux-3.18.20/include/linux/syscalls.h
+Modified to add the syscall interfaces corresponding to the new system calls that were created for this project.
 
-<h2>Unblocking all waiting processes</h2>
 
-Enter syscall number and  param:<br />
-184 123<br />
--1<br />
 
-The return value is -1 because an event with eventID 123 does not exist.
+Jaime implemented the system calls 1, 3, 4, 7 and Georgiy implemented 2, 4, 6, 8.
+We coded test program together.
 
-Enter syscall number and  param:<br />
-184 10<br />
-0<br />
 
-The return value is 0 because the event with eventID 10 does not have any processes blocked.
 
-Enter syscall number and  param:<br />
-184 11<br />
-3<br />
-
-The return value is 3 because the event with eventID 11 had 3 processes blocked. Signaling eventID 11 unblocked all of the waiting processes.
-
-<h2>Filling in the array of integers pointed to by eventIDs</h2>
-
-result of doeventinfo: 3<br />
-12 11 10 -1 -1 -1 -1 -1 -1 -1<br />
-
-The return value is 3 because three events are open. "12 11 10" correspond to the eventIDs 10, 11, and 12 assigned to the events that were previously created and that are currently open.
-
-<h2>Destroying an event</h2>
-
-Enter syscall number and  param:<br />
-182 20<br />
--1<br />
-
-The return value is -1 because an event with eventID 20 does not exist.
-
-Enter syscall number and  param:
-182 12
-0
-
-The return value is 0 because the event with eventID 12 existed, and it was destroyed. This can be confirmed by calling the doeventinfo system call again:
-
-Enter syscall number and  param:
-185 0
-result of doeventinfo: 2
-11 10 10 -1 -1 -1 -1 -1 -1 -1
-
-This time, the result is 2, not 3 as it was before, because the event with eventID 12 was destroyed, and it is not listed in the array of integers pointed to by eventIDs anymore.
+Note: While we added the compiled test program to the patch it doesn’t seem to work, so after applying patch to fresh kernel you might need to recompile our test.c.
