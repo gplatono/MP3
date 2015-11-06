@@ -74,7 +74,8 @@ void __init doevent_init(void)
  *
  * Return value:
  *  A pointer to the element in the event list with the eventID 
- *  received as a parameter. Returns NULL if the event was not found in the event list.
+ *  received as a parameter. Returns NULL if the event was not found in 
+ *  the event list.
  */
 event_t* get_event_by_id(int eventID)
 {
@@ -120,7 +121,9 @@ int check_privileges(event_t* event, int roleflag)
 
 	if(roleflag == ROLE_WAITSIG || roleflag == ROLE_CLOSE)
 	{
-		if((EUID == event->UID && event->UIDFlag == 1) || (EUID != event->UID && EGID == event->GID && event->GIDFlag == 1))
+		if((EUID == event->UID && event->UIDFlag == 1) 
+		   || (EUID != event->UID && EGID == event->GID
+		       && event->GIDFlag == 1))
 			return 1;
 	}
 	else if(roleflag == ROLE_MODIFY)
@@ -174,7 +177,7 @@ asmlinkage long sys_doeventopen(void)
 	tmp->GID = sys_getegid();
 	tmp->UIDFlag = 1;
 	tmp->GIDFlag = 1;
-	tmp->counter = 0;
+	atomic_set(&(tmp->counter), 0);
 	tmp->sig_flag = 1;
 	init_waitqueue_head(&(tmp->waitq));
 
@@ -210,21 +213,28 @@ asmlinkage long sys_doeventclose(int eventID)
 
 	event_t *tmp = get_event_by_id(eventID);
 	
-	/* If there is no event with provided eventID or we don't have enough privileges then fail */
-	if(tmp == NULL || check_privileges(tmp, ROLE_CLOSE) == 0 || check_privileges(tmp, ROLE_WAITSIG) == 0)
+	/* If there is no event with provided eventID or
+	*  we don't have enough privileges then fail 
+	*/
+	if(tmp == NULL || check_privileges(tmp, ROLE_CLOSE) == 0
+	   || check_privileges(tmp, ROLE_WAITSIG) == 0)
 	{
 		spin_unlock(&event_lock);
 		return -1;
 	}
 	
-	/* Signal and wake up all the waiting processes before destroying the event */
+	/* Remember the number of waiting processes,
+	*  set signal flag to 1 (send a signal),
+	*  wake up all the waiting processes
+	*/
+	proc_num = atomic_read(&(tmp->counter));
 	tmp->sig_flag = 1;
 	wake_up_interruptible(&(tmp->waitq));
 
+	
 	/* Save the amount of waiting processes,
 	* delete the event from the list and free memory
 	*/
-	proc_num = tmp->counter;
 	list_del(&(tmp->evtlist));
 	event_count--;	
 	kfree(tmp);
@@ -262,11 +272,15 @@ asmlinkage long sys_doeventwait(int eventID)
 		return -1;
 	}
 
-	/* Increment the counter of waiting processes and set signal flag to 0 (No signals) */
-	tmp->counter++;
+	/* Increment the counter of waiting processes 
+	*  and set signal flag to 0 (No signals) 
+	*/
+	atomic_inc(&(tmp->counter));
 	tmp->sig_flag = 0;
 	spin_unlock(&event_lock);
-	wait_event_interruptible(tmp->waitq, tmp->sig_flag == 1);	
+
+	wait_event_interruptible(tmp->waitq, tmp->sig_flag == 1);
+	atomic_dec(&(tmp->counter));	
 	return 1;
 }
 
@@ -305,14 +319,14 @@ asmlinkage long sys_doeventsig(int eventID)
 		return -1;
 	}
 	
-	/* Set signal flag to 1 (send a signal),
-	*  wake up all the waiting processes,
-	*  reset the waiting counter
+	/* Remember the number of waiting processes,
+	*  set signal flag to 1 (send a signal),
+	*  wake up all the waiting processes
 	*/
+	proc_num = atomic_read(&(tmp->counter));
 	tmp->sig_flag = 1;
 	wake_up_interruptible(&(tmp->waitq));
-	proc_num = tmp->counter;
-	tmp->counter = 0; 	
+	
 	spin_unlock(&event_lock);
 	return proc_num;
 }
@@ -325,8 +339,8 @@ asmlinkage long sys_doeventsig(int eventID)
  *  the current set of active event IDs.
  *
  * Inputs:
- *  num - The number of integers which the memory pointed to by eventIDs can hold.
- *  eventIDs - A pointer to a memory location in which to store the current set of 
+ *  num - The number of integers the memory pointed to by eventIDs can hold.
+ *  eventIDs - A pointer to a memory location in which to store the set of 
  *  active eventIDs.
  *
  * Outputs: 
@@ -482,7 +496,8 @@ asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag)
  *  -1 - Failed placing values into memory corresponding to UID, GID, UIDFlag, and 
  *  GIDFlag.
  */
-asmlinkage long sys_doeventstat(int eventID, uid_t __user *UID, gid_t __user *GID, int __user *UIDFlag, int __user *GIDFlag)
+asmlinkage long sys_doeventstat(int eventID, uid_t __user *UID, gid_t __user *GID,
+ int __user *UIDFlag, int __user *GIDFlag)
 {
 	/* Pointer safety check */
 	if(UID == NULL || GID == NULL || UIDFlag == NULL || GIDFlag == NULL)
@@ -499,7 +514,9 @@ asmlinkage long sys_doeventstat(int eventID, uid_t __user *UID, gid_t __user *GI
 		return -1;	
 	}
 
-	/* Copy the event's UID, GID, UIDFlag, GIDFlag and check whether the operation succeded */
+	/* Copy the event's UID, GID, UIDFlag, GIDFlag 
+	*  and check whether the operation succeded 
+	*/
 	if(copy_to_user(UID, &(tmp->UID), sizeof(uid_t)) != 0 
 	|| copy_to_user(GID, &(tmp->GID), sizeof(gid_t)) != 0
 	|| copy_to_user(UIDFlag, &(tmp->UIDFlag), sizeof(int)) != 0 

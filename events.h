@@ -18,7 +18,7 @@ struct event_struct
 					// 0 - No signal, some processes are currently sleeping on this event
 					// 1 - Signal is set
 					
-	int counter;			// The number of processes currently sleeping on this event
+	atomic_t counter;			// The number of processes currently sleeping on this event
 	struct list_head evtlist;	// Linux list structure
 	wait_queue_head_t waitq;	// Waiting queue for this event
 };

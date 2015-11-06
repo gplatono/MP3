@@ -1,5 +1,6 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 int main(int argc, char **argv)
 {
@@ -7,17 +8,23 @@ int main(int argc, char **argv)
 	
 	int ret_val;
 
+	printf("Calling doeventclose and doeventsig on events with IDs 1 and 0 respectively...\n");
+
 	/* Try to destroy an event */
 	ret_val = syscall(182, 1);
 	if(ret_val == -1)
 		printf("doeventclose returned %i since there are no events yet\n", ret_val);
-	else printf("Unknown error in doeventclose");
+	else printf("Unknown error in doeventclose\n");
+
+	printf("\n\n");
 
 	/* Try to signal an event */
 	ret_val = syscall(184, 0);
 	if(ret_val == -1)
 		printf("doeventsig returned %i since there are no events yet\n", ret_val);
-	else printf("Unknown error in doeventsig");
+	else printf("Unknown error in doeventsig\n");
+
+	printf("\n\n");
 
 	/* Create a bunch of events */	
 	for(int i = 0; i < 100; i++)
@@ -28,103 +35,142 @@ int main(int argc, char **argv)
 		else printf("Event creation failed\n");
 	}
 
+	printf("\n\n");
+
 	/* Output stats of event 0 */
 	uid_t UID = -1;
 	gid_t GID = -1;
 	int UIDFlag = -1;
 	int GIDFlag = -1;
-	printf("Calling doeventstat on event ID 0: %i\n", syscall(214, 0, &UID, &GID, &UIDFlag, &GIDFlag));
+	printf("Calling doeventstat on event 0. Result: %i\n", syscall(214, 0, &UID, &GID, &UIDFlag, &GIDFlag));
 	printf("Event stats: ID = 0, UID = %i, GID = %i, UIDFlag = %i, GIDFlag = %i\n", UID, GID, UIDFlag, GIDFlag);
 			
+	printf("\n\n");
 	
 	/* Try to destroy an event with ID 0 again*/
 	ret_val = syscall(182, 0);
 	if(ret_val >= -1)
-		printf("doeventclose returned %i. Event closing successful, since event with ID 0 existed\n", ret_val);
+		printf("doeventclose returned %i."
+		" Event closing successful, since event with ID 0 existed\n", ret_val);
 	else printf("Error in doeventclose\n");
+
+	printf("\n\n");
 
 	/* Try to get stats of event 0 */
 	printf("Calling doeventstat on event ID 0: %i\n", syscall(214, 0, &UID, &GID, &UIDFlag, &GIDFlag));
 
+	printf("\n\n");
+
 	/* Try to signal an event again*/
 	ret_val = syscall(184, 99);
 	if(ret_val >= -1)
-		printf("doeventsig returned %i. Signaling is successful, since event with ID 99 existed and 0 processes are waiting on this event\n", ret_val);
+		printf("doeventsig returned %i. Signaling is successful,"
+ 		"since event with ID 99 existed and 0 processes are waiting on this event\n", ret_val);
 	else printf("Error in doeventsig\n");
 
+	printf("\n\n");
+
+	/* Testing signals. 
+	*  Creating 4 children and sending them to sleep on event 99 and then signaling them twice 
+	*/
+	pid_t pid = fork();
+	if(pid == 0)
+	{		
+		fork();
+		fork();
+		printf("Sending process %i to sleep on an event 99\n", getpid());
+		ret_val = syscall(183, 99);
+		if(ret_val != -1)
+			printf("Child has been awakened\n");
+		else printf("Error in doeventwait\n");		
+		return 0;
+	}
+	else
+	{
+		sleep(1);
+		printf("Trying to wake up processes waiting on event 99. Sending signal...\n");
+
+		ret_val = syscall(184, 99);
+		if(ret_val != -1)
+			printf("Doeventsig successful. "
+			"The number of processes that were waiting on event 99: %i\n", ret_val);
+		else printf("Unknown error in doeventsig");
+		
+		
+		printf("Trying to wake up processes again. Sending signal...\n");
+
+		ret_val = syscall(184, 99);
+		if(ret_val > 0)
+			printf("There are %i process(es) that have not been awakened yet\n", ret_val);
+		else if(ret_val == 0)
+			printf("Doeventsig returned 0 since there are no processes waiting on event 98 anymore\n");
+		else printf("Error in doeventsig\n");		
+	}
+
+	sleep(1);
+	printf("\n\n");
+
+
+	/* Trying to close event with several processes waiting on it */
+	pid = fork();
+	if(pid == 0)
+	{		
+		fork();
+		fork();
+		printf("Sending process %i to sleep on an event 99\n", getpid());
+
+		ret_val = syscall(183, 99);
+		if(ret_val != -1)
+			printf("Child has been awakened\n");
+		else printf("Error in doeventwait\n");
+		return 0;		
+	}
+	else
+	{
+		sleep(1);
+		printf("Trying to close event 99...\n");
+
+		ret_val = syscall(182, 99);
+		if(ret_val != -1)
+			printf("Doeventclose successful."
+			" The number of processes waited on event 99: %i\n", ret_val);
+		else printf("Unknown error in doeventclose\n");
+	}
+
+	sleep(1);
+	printf("\n\n");
+
+	/* Testing access control mechanism */	
+
+	printf("Change UID, GID of event 98 to 100 and UID and GID of current process to 200\n");
+	ret_val = syscall(205, 98, 100, 100);	
+	seteuid(200);
+	setegid(200);
+
+	/* try to change UIDFlag and GIDFlag */
+
+	printf("Calling Doeventchmod on event 98...\n");
+	ret_val = syscall(211, 98, 0, 0);
+	if(ret_val == -1) 
+		printf("Doeventchmod returned -1 because current process has effective UID %i\n", geteuid());
+	else printf("Unknown error in doeventchmod\n");
+
+	printf("\n\n");	
+
+	printf("Changing UID, GID of event 98 to 200 and trying again:\n");
+	ret_val = syscall(205, 98, 200, 200);	
 
 	
+	/* try to change UIDFlag and GIDFlag again */
 
+	ret_val = syscall(211, 98, 0, 0);
+	printf("Calling doeventstat on event ID 98: %i\n", syscall(214, 98, &UID, &GID, &UIDFlag, &GIDFlag));
+	printf("Event stats: ID = 98, UID = %i, GID = %i, UIDFlag = %i, GIDFlag = %i\n", UID, GID, UIDFlag, GIDFlag);
 
-
-
-
-/*	while(input != -1)
+	
+	for(int i=0; i<100; i++)
 	{
-		printf("Enter syscall number and  param:\n");
-		scanf("%i %i", &input, &param);
-		// System call to create a new event.
-		if(input == 181)
-			syscall (181);
-		// System call to destroy an event.
-		else if(input == 182)
-			printf("%i\n", syscall (182, param));
-		// System call to block a process until the event is signaled.
-		else if(input == 183)
-		{
-			pid_t pid = fork();
-			if(pid == 0) 
-			{
-				printf("%i\n", syscall (183, param));
-				return 0;
-			}
-			else printf("Child created...\n");
-		}
-		// System call to unblock all waiting processes.
-		else if(input == 184)
-			printf("%i\n", syscall (184, param));
-		// System call to fill in the array of integers.
-		else if(input == 185)
-		{	
-			printf("result of doeventinfo: %i\n", syscall(185, 10, &eventIDs[0]));
-			for(int i=0; i<10; i++)
-				printf("%i ", eventIDs[i]);
-			printf("\n");
-		}	
-		// System call to change the UID and GID of the event to the specified values.
-		else if(input == 205)
-		{
-			uid_t UID;
-			gid_t GID;
-			printf("Enter UID:\n");
-			scanf("%ld", &UID);
-			printf("Enter GID:\n");
-			scanf("%ld", &GID);
-			printf("result of doeventchown: %i\n", syscall(205, param, UID, GID));
-		}		
-		// System call to change the User Signal Enable Bit to UIDFlag and the Group 
-		// Signal Enable Bit to GIDFlag.
-		else if(input == 211) 
-		{
-			int UIDFlag;
-			int GIDFlag;
-			printf("Enter UIDFlag:\n");
-			scanf("%ld", &UIDFlag);
-			printf("Enter GIDFlag:\n");
-			scanf("%ld", &GIDFlag);
-			printf("result of doeventchmod: %i\n", syscall(211, param, UIDFlag, GIDFlag));
-		}
-		// System call to place the UID, GID, User Signal Enable Bit, and Group Signal Enable Bit 
-		// into the memory pointed to by UID, GID, UIDFlag, and GIDFlag, respectively.
-		else if(input == 214)
-		{
-			uid_t UID;
-			gid_t GID;
-			int UIDFlag;
-			int GIDFlag;
-			printf("result of doeventstat: %i\n", syscall(214, param, &UID, &GID, &UIDFlag, &GIDFlag));
-			printf("event stats: ID = %i, UID = %i, GID = %i, UIDFlag = %i, GIDFlag = %i\n", param, UID, GID, UIDFlag, GIDFlag);
-		}		
-	}	*/
+		syscall(182, i);
+	}
 	return 0;
 }
